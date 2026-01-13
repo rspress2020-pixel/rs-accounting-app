@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: rs-accounting-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-accounting_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-accounting_password}
+      POSTGRES_DB: ${DB_NAME:-accounting_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - accounting-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-accounting_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rs-accounting-backend
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${BACKEND_PORT:-3001}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-accounting_user}
+      DB_PASSWORD: ${DB_PASSWORD:-accounting_password}
+      DB_NAME: ${DB_NAME:-accounting_db}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - accounting-network
+    command: npm run dev
+
+  # React Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rs-accounting-frontend
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3001}
+      NODE_ENV: ${NODE_ENV:-development}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - accounting-network
+    command: npm start
+
+volumes:
+  postgres_data:
+
+networks:
+  accounting-network:
+    driver: bridge
